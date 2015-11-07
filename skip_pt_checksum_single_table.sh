@@ -1,6 +1,7 @@
 #!/bin/bash
 
 # Skip a specific table that pt-table-checksum tried to check
+# Should print 0 when sleep() is called and then 1 when skip counter is set before starting slave
 
 my_slave_socket='/foo/mysql.sock'
 my_opts_file='/root/.foo.tmp.my.cnf'
