@@ -5,7 +5,7 @@
 my_slave_socket='/foo/mysql.sock'
 my_opts_file='/root/.foo.tmp.my.cnf'
 
-my_checksum_db='percona_checksum_01'c
+my_checksum_db='percona_checksum_01'
 my_skip_table_dbname='db_name_01'
 my_skip_table_tablename='table_name_01'
 
