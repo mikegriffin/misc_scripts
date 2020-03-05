@@ -1,0 +1,49 @@
+#!/usr/bin/env bash
+
+#### Configure as "The default administration directory" in alternatives man page:
+alternatives_admindir='/var/lib/alternatives'
+
+#### When running the command, you might grep for these terms:
+# "could provide" "missing" "exists" "not recommended" "is recommended"
+
+#### Correcting the alternatives can probably be accomplished with one of these commands:
+# alternatives --auto foo
+# alternatives --config foo
+
+
+####################################################################################################
+# Validate the alternatives_admindir
+####################################################################################################
+[[ ! -d "${alternatives_admindir}" ]] && echo "${alternatives_admindir} is not a directory" && exit 1
+
+alts=( "${alts[@]}" $(find "${alternatives_admindir}" -maxdepth 1 -type f) )
+[[ "${#alts[@]}" -lt 1 ]] && echo "${alternatives_admindir} is empty" && exit 1
+
+####################################################################################################
+# Check for missing or non-priority symlinks
+####################################################################################################
+for i in "${alts[@]}"; do
+    is_symlink=0
+    command=$(head -2 "${i}" | tail -1)
+    test -L "${command}" && is_symlink=1
+
+    if [[ "${is_symlink}" -eq 0 ]];
+       then
+           if test -x "${command}"; then
+                                        echo "alternative $(basename ${i}) could provide ${command} but an executable already exists"
+           else
+              test ! -f "${command}" || echo "alternative $(basename ${i}) could provide ${command} which appears to be broken"
+              test   -f "${command}" || echo "alternative $(basename ${i}) could provide ${command} which appears to be missing"
+           fi
+    else
+       priority=$(grep '^[0-9]' "${i}" | sort -nk 1 | tail -1)
+       symlink_config=$(grep -B1 "${priority}" "${i}" | head -1)
+       symlink_actual=$(readlink -f "${command}")
+       if [[ "${symlink_actual}" != "${symlink_config}" ]] &&
+          [[ "$(readlink -f "${symlink_config}")" != "${symlink_actual}" ]]; then
+          echo "alternative $(basename ${i}) = ${command} = ${symlink_actual} but not recommended"
+       else
+          echo "alternative $(basename ${i}) = ${command} = ${symlink_actual} and is recommended"
+       fi
+    fi
+done
