@@ -1,6 +1,6 @@
 ### Usage
 ## cat generate_sorted_table_list.sql
-# select concat('OPTIMIZE LOCAL TABLE `', table_schema, '`', '`', table_name, '`;') from information_schema.tables where table_schema='foo' order by data_length desc;
+# select concat('OPTIMIZE LOCAL TABLE `', table_schema, '`', '.', '`', table_name, '`;') from information_schema.tables where table_schema='foo' order by data_length desc;
 
 ## mysql -s < generate_sorted_table_list.sql > tables
 
