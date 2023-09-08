@@ -1,0 +1,31 @@
+touch /var/log/diskuse.log
+chmod o-rwx /var/log/diskuse.log
+chown root:adm /var/log/diskuse.log
+
+touch /usr/local/bin/diskuse
+chmod 0540 /usr/local/bin/diskuse
+chown root. /usr/local/bin/diskuse
+
+
+# /etc/logrotate.d/diskuse
+/var/log/diskuse.log {
+    rotate 4
+    monthly
+    compress
+    missingok
+    create root adm
+}
+
+# /usr/local/bin/diskuse
+#!/usr/bin/env bash
+{
+	/usr/bin/echo -e "\n######################################################################################################################################";
+	/usr/bin/date;
+	/usr/bin/df -Th | /usr/bin/head -1;
+       	/usr/bin/df -Th | /usr/bin/grep 'ext4\|secfs2\|xfs' | /usr/bin/sort -k7;
+} >> /var/log/diskuse.log
+
+
+# tail -2 /var/spool/cron/root
+# Write out df to /var/log/diskuse.log
+5 * * * * /mnt/data/scripts/diskuse 2> /dev/null
