@@ -6,28 +6,79 @@
 
 ##################################################
 #### partname is not optional, the way this script invokes parted
-#### I could not get parted, in script mode, to parse args better
-#### partitions all created as primary, which is fine with gpt
-#### specifying too many or too large partions results in fewer created
+#### specifying too many or too large partitions results in fewer created
 
-partcount=16
-partgb=32
+
+partcount=18
+partgb=48
 partname=iscsi
-device=/dev/nvme0n1zzz
+device=/dev/nvme0n1xxx
+createremainder=0
 
 
-read -r -n 1 -s -p "Press any key to wipe ${device} and partition with ${partcount} new ${partgb}GiB partitions "
+
+echo "Checking device..."
+[[ -b "${device}" ]] || { echo "ERROR: ${device} invalid"; exit 1; }
+
+{ lsblk -l "${device}" | awk -v device=$(basename "${device}") '$1 == device && $6 !~ /disk/ {print "ERROR: /dev/" device " is a " $6", not a disk"; exit 1}'; } || exit 1
+
+### note wipefs and parted both seem to refuse
+### reasonable endeavor check anyway
+
+echo "Checking mounts..."
+{ lsblk -l "${device}" | awk -v device=$(basename "${device}") '$1 ~ device && $7 ~ /\// {print "ERROR: mounted at "$7; exit 1}'; } || exit 1
+
+if ! command -v pvs &> /dev/null
+then
+   echo "Skipping LVM check..."
+else
+   echo "Checking LVM..."
+   for i in $(lsblk -l "${device}" | awk -v device=$(basename "${device}") '$1 ~ device {print $1}'); do
+   { pvs | awk -v checkpv="/dev/${i}" '$1 == checkpv {print "ERROR: LVM uses "$1; exit 1}'; } ||
+   exit 1
+done
+fi
+
+
+
 echo
-[[ -b "${device}" ]] || { echo "${device} invalid"; exit 1; }
-echo -n "Continuing in a few seconds..."
-for i in {1..3}; do sleep "${i}"; echo -n .; done; echo
+read -t 2 -r -n 2 -s -p "Press any key to wipe ${device} and re-partition with ${partcount} * ${partgb}GiB partitions " || { echo -e "\nTimed out"; exit 1; }
+echo
 
-for i in $(lsblk -l ${device} | tail -n+3 | cut -d' ' -f1); do wipefs -a /dev/"${i}" &> /dev/null; done &&
-wipefs -a ${device} &> /dev/null &&
-parted --align=optimal ${device} --script -- \
+echo
+echo -n "Continuing in a few seconds..."
+for i in {1..3}; do echo -n .; sleep "${i}"; done; echo -en '.\n'
+
+
+
+echo "Wiping..."
+for i in $(lsblk -l "${device}" | awk '$6 ~/^part$/ {print $1}'); do
+   wipefs -a /dev/"${i}" > /dev/null ||
+   { echo "ERROR: partition ${device} not wiped"; exit 1; }
+done &&
+
+wipefs -a "${device}" &> /dev/null ||
+{ echo "ERROR: device ${device} not wiped"; exit 1; }
+
+echo "Partitioning..."
+parted --align=optimal "${device}" --script -- \
 $(echo "'mklabel gpt'") \
 $(echo "'mkpart ${partname} 0% ${partgb}GiB'") \
 $(for i in $(seq 1 $(("${partcount}"-1))); do
-echo -e "'mkpart ${partname} $(( $i*${partgb} ))GiB $(( $i*${partgb}+${partgb} ))GiB'"
-done) &&
-parted --align=optimal ${device} p
+   echo -e "'mkpart ${partname} $(( $i*${partgb} ))GiB $(( $i*${partgb}+${partgb} ))GiB'"
+done)
+echo "mkpart ${partname} exit: $?"
+
+
+if [[ "${createremainder}" -eq 1 ]]; then
+   echo "Partitioning extra space (will fail if number requested not created)..."
+   extraargs=$(echo "'mkpart extra $(( ${partgb}*${partcount} ))GiB 100%'")
+   parted --align=optimal "${device}" --script -- \
+   $(echo "${extraargs}")
+   echo "mkpart extra softexit: $?"
+fi
+
+
+echo
+echo "Final state:"
+parted --align=optimal "${device}" p | grep --color=always '$\|[[:space:]]extra$'
