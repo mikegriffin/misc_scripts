@@ -1,26 +1,32 @@
 #!/usr/bin/env bash
 
 ##################################################
-#### Wipe device and partition it with several same-sized partitions
+#### Wipe device, then partition with several same-sized partitions
 ##################################################
 
 ##################################################
 #### partname is not optional, the way this script invokes parted
 #### specifying too many or too large partitions results in fewer created
 
-
-partcount=18
-partgb=48
+#set -x
+partcount=10
+partgb=5
 partname=iscsi
 device=/dev/nvme0n1xxx
 createremainder=0
+uniquesuffix=0
 
 
+
+##################################################
+#### SCRIPT BEGIN
+##################################################
 
 echo "Checking device..."
 [[ -b "${device}" ]] || { echo "ERROR: ${device} invalid"; exit 1; }
 
 { lsblk -l "${device}" | awk -v device=$(basename "${device}") '$1 == device && $6 !~ /disk/ {print "ERROR: /dev/" device " is a " $6", not a disk"; exit 1}'; } || exit 1
+
 
 ### note wipefs and parted both seem to refuse
 ### reasonable endeavor check anyway
@@ -28,17 +34,16 @@ echo "Checking device..."
 echo "Checking mounts..."
 { lsblk -l "${device}" | awk -v device=$(basename "${device}") '$1 ~ device && $7 ~ /\// {print "ERROR: mounted at "$7; exit 1}'; } || exit 1
 
+
 if ! command -v pvs &> /dev/null
 then
    echo "Skipping LVM check..."
 else
    echo "Checking LVM..."
    for i in $(lsblk -l "${device}" | awk -v device=$(basename "${device}") '$1 ~ device {print $1}'); do
-   { pvs | awk -v checkpv="/dev/${i}" '$1 == checkpv {print "ERROR: LVM uses "$1; exit 1}'; } ||
-   exit 1
+       { pvs | awk -v checkpv="/dev/${i}" '$1 == checkpv {print "ERROR: LVM uses "$1; exit 1}'; } || exit 1
 done
 fi
-
 
 
 echo
@@ -50,29 +55,43 @@ echo -n "Continuing in a few seconds..."
 for i in {1..3}; do echo -n .; sleep "${i}"; done; echo -en '.\n'
 
 
-
 echo "Wiping..."
 for i in $(lsblk -l "${device}" | awk '$6 ~/^part$/ {print $1}'); do
    wipefs -a /dev/"${i}" > /dev/null ||
    { echo "ERROR: partition ${device} not wiped"; exit 1; }
-done &&
+done
 
-wipefs -a "${device}" &> /dev/null ||
+wipefs -a "${device}" > /dev/null ||
 { echo "ERROR: device ${device} not wiped"; exit 1; }
 
+
 echo "Partitioning..."
+
+### try to be balanced
+generate_uniq_suffix() {
+  if [[ "${uniquesuffix}" -ne 0 ]]; then
+       [[ -z "${mid}" ]] &&
+       [[ -f /etc/machine-id ]] &&
+           mid=$(</etc/machine-id)
+       [[ -z "${mid}" ]] &&
+           mid="${RANDOM:0:4}${RANDOM:0:4}"
+       echo "$(date +%s%N)${mid}${device}" |
+           cksum |
+           cut -d ' ' -f1
+   fi
+}
+
 parted --align=optimal "${device}" --script -- \
 $(echo "'mklabel gpt'") \
-$(echo "'mkpart ${partname} 0% ${partgb}GiB'") \
+$(echo "'mkpart ${partname}$(generate_uniq_suffix) 0% ${partgb}GiB'") \
 $(for i in $(seq 1 $(("${partcount}"-1))); do
-   echo -e "'mkpart ${partname} $(( $i*${partgb} ))GiB $(( $i*${partgb}+${partgb} ))GiB'"
+   echo -e "'mkpart ${partname}$(generate_uniq_suffix) $(( $i*${partgb} ))GiB $(( $i*${partgb}+${partgb} ))GiB'"
 done)
 echo "mkpart ${partname} exit: $?"
 
-
 if [[ "${createremainder}" -eq 1 ]]; then
    echo "Partitioning extra space (will fail if number requested not created)..."
-   extraargs=$(echo "'mkpart extra $(( ${partgb}*${partcount} ))GiB 100%'")
+   extraargs=$(echo "'mkpart extra$(generate_uniq_suffix) $(( ${partgb}*${partcount} ))GiB 100%'")
    parted --align=optimal "${device}" --script -- \
    $(echo "${extraargs}")
    echo "mkpart extra softexit: $?"
@@ -81,4 +100,4 @@ fi
 
 echo
 echo "Final state:"
-parted --align=optimal "${device}" p | grep --color=always '$\|[[:space:]]extra$'
+parted --align=optimal "${device}" p | grep --color=always '$\|[[:space:]]extra[0-9]*$'
