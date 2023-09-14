@@ -8,7 +8,6 @@
 #### partname is not optional, the way this script invokes parted
 #### specifying too many or too large partitions results in fewer created
 
-#set -x
 partcount=10
 partgb=5
 partname=iscsi
