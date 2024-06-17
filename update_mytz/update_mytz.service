@@ -1,0 +1,12 @@
+[Unit]
+Description=Update MySQL Time Zone tables after update of tzdata
+Requires=mysql.service
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/update_mytz.sh
+Restart=on-failure
+RestartSec=10s
+
+[Install]
+WantedBy=multi-user.target
