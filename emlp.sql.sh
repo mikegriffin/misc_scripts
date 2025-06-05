@@ -1,5 +1,5 @@
 # user configuration
-seconds=1 # increase this if output is too bouncy
+seconds=2 # increase this if output is too bouncy
 socket=/mnt/data/mysqldata/mysql.sock
 
 # internal variables
@@ -24,13 +24,17 @@ while true; do
 			echo "Relay log space grew to $rls - eta likely to climb due to Replica_IO backlog" &&
 			echo "##############" &&
 			echo
-	[[ $counter -eq 0 ]] && echo -e "\n$output_description" && counter=1 && continue
+	[[ $counter -eq 0 ]] && echo -e "\n##########################################\n$output_description" && counter=1 && continue
 	date
-	[[ $emlp1 -gt $emlp2 ]] && echo "recalculating since we switched to next log during check" && echo -ne "\n$output_description"
+	[[ $emlp1 -gt $emlp2 ]] && echo -ne "##############\nrecalculating since we switched to next log during check\n##############" &&
+		                   echo -ne "\n\n##########################################\n$output_description"
 	[[ $emlp2 -gt $emlp1 ]] && diff=$(( $emlp2 - $emlp1 )) &&
-			echo -n "$rmlf $emlp2 $(( $diff/$seconds )) Seconds_Behind_Master: $sbm (advanced $(echo "scale=2; $old_sbm - $sbm" | bc -lq)"
-			echo -n " seconds in $seconds seconds) eta: $(echo "scale=2; ($rls - $emlp2)/($diff/$seconds)/3600" | bc -lq) hours" &&
-	  [[ $(( $mrls * 2 ))  -gt $rls ]] && echo " (eta likely to climb due to Replica_IO backlog)" || echo
+			echo -n "$rmlf $emlp2 $(( $diff/$seconds )) Seconds_Behind_Master: $sbm (advanced $(echo "scale=2; $old_sbm - $sbm" | bc -lq)" &&
+			echo -en " seconds in $seconds seconds) eta: " &&
+			ETA=$(echo "scale=2; ($rls - $emlp2)/($diff/$seconds)/3600" | bc -lq) &&
+			{ ISNEG=$(echo "${ETA}<0" | bc -lq) ;} &&
+			{ [[ "${ISNEG}" -eq 0 ]] || ETA=0 ;} &&
+			echo -en "${ETA} hours\n"
 	[[ $emlp2 -eq $emlp1 ]] && diff=$(( $emlp2 - $emlp1 )) &&
 	  echo "0 $rmlf $emlp2"
 	counter=$((counter+1)) && [[ $counter -gt $seconds && $counter -gt 10 ]] && counter=0
